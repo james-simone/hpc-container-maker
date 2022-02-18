@@ -115,7 +115,7 @@ if True:
         'QUDA_HOME=/usr/local/quda',
         'LD_FLAGS="-L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64"',
         'WANTQUDA=true',
-        'WANT_MIXED_PRECISION_GPU=1',
+        'WANT_MIXED_PRECISION_GPU=2',
         'WANT_CL_BCG_GPU=true',
         'WANT_FN_CG_GPU=true',
         'WANT_FL_GPU=true',
