@@ -104,39 +104,46 @@ Stage0 += environment(variables={
     'LD_LIBRARY_PATH': '/usr/local/quda/lib:$LD_LIBRARY_PATH', })
 
 # build MILC
-if True:
-    milc_opts = [
-        'PRECISION=2',
-        'OMP=true',
-        'MPP=true',
-        'CC=/usr/local/openmpi/bin/mpicc',
-        'CXX=/usr/local/openmpi/bin/mpicxx',
-        'LD=/usr/local/openmpi/bin/mpicxx',
-        'QUDA_HOME=/usr/local/quda',
-        'LD_FLAGS="-L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64"',
-        'WANTQUDA=true',
-        'WANT_MIXED_PRECISION_GPU=1',
-        'WANT_CL_BCG_GPU=true',
-        'WANT_FN_CG_GPU=true',
-        'WANT_FL_GPU=true',
-        'WANT_FF_GPU=true',
-        'WANT_GF_GPU=true',
-        'WANTQMP=true',
-        'WANTQIO=true',
-        'QMPPAR=/usr/local/quda',
-        'QIOPAR=/usr/local/quda',
-    ]
+milc_opts = [
+    'PRECISION=2',
+    'OMP=true',
+    'MPP=true',
+    'CC=/usr/local/openmpi/bin/mpicc',
+    'CXX=/usr/local/openmpi/bin/mpicxx',
+    'LD=/usr/local/openmpi/bin/mpicxx',
+    'WANTQMP=true',
+    'WANTQIO=true',
+    'CTIME="-DCGTIME -DFFTIME -DGFTIME -DFLTIME -DPRTIME"',
+    'QMPPAR=/usr/local/quda',
+    'QIOPAR=/usr/local/quda', ]
+milc_gpu = [
+    'QUDA_HOME=/usr/local/quda',
+    'LD_FLAGS="-L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64"',
+    'WANTQUDA=true',
+    'WANT_MIXED_PRECISION_GPU=1',
+    'WANT_CL_BCG_GPU=true',
+    'WANT_FN_CG_GPU=true',
+    'WANT_FL_GPU=true',
+    'WANT_FF_GPU=true',
+    'WANT_GF_GPU=true',]
+# TODO: 'CGEOM=-DFIX_NODE_GEOM', # add prompt to specify lattice partitioning?
 
-    Stage0 += generic_build(branch='develop',
-                            build=['cp Makefile ks_imp_rhmc',
-                                   'cd ks_imp_rhmc',
-                                   'make -j 1 su3_rhmd_hisq ' + ' '.join(milc_opts), ],
-                            install=['mkdir -p /usr/local/milc/bin',
-                                     'cp /var/tmp/milc_qcd/ks_imp_rhmc/su3_rhmd_hisq /usr/local/milc/bin'],
-                            prefix='/usr/local/milc',
-                            repository='https://github.com/milc-qcd/milc_qcd')
-    Stage0 += environment(variables={'PATH': '/usr/local/milc/bin:$PATH'})
-    pass
+# build both CPU and GPU-accelerated versions
+Stage0 += generic_build(branch='develop',
+                        build=['cp Makefile ks_imp_rhmc',
+                               'cd ks_imp_rhmc',
+                               'make -j 1 su3_rhmd_hisq ' + ' '.join(milc_opts),
+                               'mv su3_rhmd_hisq su3_rhmd_hisq_cpu',
+                               'make clean', 'rm -f .lastmake* localmake',
+                               'cd ../libraries', 'make -f Make_vanilla clean', 'cd ../ks_imp_rhmc',
+                               'make -j 1 su3_rhmd_hisq ' + ' '.join(milc_opts) + ' ' + ' '.join(milc_gpu),],
+                        install=['mkdir -p /usr/local/milc/bin',
+                                 'cp /var/tmp/milc_qcd/ks_imp_rhmc/su3_rhmd_hisq      /usr/local/milc/bin',
+                                 'cp /var/tmp/milc_qcd/ks_imp_rhmc/su3_rhmd_hisq_cpu  /usr/local/milc/bin',],
+                        prefix='/usr/local/milc',
+                        repository='https://github.com/milc-qcd/milc_qcd')
+Stage0 += environment(variables={'PATH': '/usr/local/milc/bin:$PATH'})
+
 
 ###############################################################################
 # Release stage

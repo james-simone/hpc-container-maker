@@ -1,5 +1,5 @@
 """
-quda[develop] 
+MILC[develop] app: su3_rhmd_hisq 
 
 Contents:
   Ubuntu 20.04 (LTS)
@@ -7,6 +7,7 @@ Contents:
   GNU compilers (upstream; 9.3.0)
   OFED Mellanox 5.4-1.0.3.0 (ConnectX gen 4--6)
   OpenMPI version 4.1.2
+  Quda version feature/hip-compile-fixes
 """
 
 # pylint: disable=invalid-name, undefined-variable, used-before-assignment
@@ -127,47 +128,53 @@ if True:
     pass
 
 # build MILC
-if True:
-    #         'LD_FLAGS="-L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64"',
-    milc_opts = [
-        'PRECISION=2',
-        'OMP=true',
-        'MPP=true',
-        'CC=/usr/local/openmpi/bin/mpicc',
-        'CXX=/usr/local/openmpi/bin/mpicxx',
-        'LD=/usr/local/openmpi/bin/mpicxx',
-        'QUDA_HOME=/usr/local/quda',
-        'WANTQUDA=true',
-        'WANT_MIXED_PRECISION_GPU=1',
-        'WANT_CL_BCG_GPU=true',
-        'WANT_FN_CG_GPU=true',
-        'WANT_FL_GPU=true',
-        'WANT_FF_GPU=true',
-        'WANT_GF_GPU=true',
-        'WANTQMP=true',
-        'WANTQIO=true',
-        'QMPPAR=/usr/local/quda',
-        'QIOPAR=/usr/local/quda',
-        'LIBSCIDAC="-Wl,-rpath=/usr/local/quda/lib -L/usr/local/quda/lib -lqmp -lqio -llime"',
-        'LIBQUDA="-Wl,-rpath=/usr/local/quda/lib -L/usr/local/quda/lib -llime -lquda"',
-        'CUDA_HOME=/opt/rocm-4.5.2',
-    ]
+milc_opts = [
+    'PRECISION=2',
+    'OMP=true',
+    'MPP=true',
+    'CC=/usr/local/openmpi/bin/mpicc',
+    'CXX=/usr/local/openmpi/bin/mpicxx',
+    'LD=/usr/local/openmpi/bin/mpicxx',
+    'WANTQMP=true',
+    'WANTQIO=true',
+    'CTIME="-DCGTIME -DFFTIME -DGFTIME -DFLTIME -DPRTIME"',
+    'QMPPAR=/usr/local/quda',
+    'QIOPAR=/usr/local/quda',
+    'LIBSCIDAC="-Wl,-rpath=/usr/local/quda/lib -L/usr/local/quda/lib -lqmp -lqio -llime"',]
+milc_gpu = [
+    'CUDA_HOME=/opt/rocm-4.5.2',
+    'QUDA_HOME=/usr/local/quda',
+    'LD_FLAGS="-L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64"',
+    'LIBQUDA="-Wl,-rpath=/usr/local/quda/lib -L/usr/local/quda/lib -llime -lquda"',
+    'WANTQUDA=true',
+    'WANT_MIXED_PRECISION_GPU=1',
+    'WANT_CL_BCG_GPU=true',
+    'WANT_FN_CG_GPU=true',
+    'WANT_FL_GPU=true',
+    'WANT_FF_GPU=true',
+    'WANT_GF_GPU=true',]
+# TODO: 'CGEOM=-DFIX_NODE_GEOM', # add prompt to specify lattice partitioning?
 
-    Stage0 += generic_build(branch='develop',
-                            build=['cp Makefile ks_imp_rhmc',
-                                   'cd ks_imp_rhmc',
-                                   'make -j 1 su3_rhmd_hisq ' + ' '.join(milc_opts), ],
-                            install=['mkdir -p /usr/local/milc/bin',
-                                     'cp /var/tmp/milc_qcd/ks_imp_rhmc/su3_rhmd_hisq /usr/local/milc/bin'],
-                            prefix='/usr/local/milc',
-                            repository='https://github.com/milc-qcd/milc_qcd')
-    Stage0 += environment(variables={'PATH': '/usr/local/milc/bin:$PATH'})
-    pass
+# build both CPU and GPU-accelerated versions
+Stage0 += generic_build(branch='develop',
+                        build=['cp Makefile ks_imp_rhmc',
+                               'cd ks_imp_rhmc',
+                               'make -j 1 su3_rhmd_hisq ' + ' '.join(milc_opts),
+                               'mv su3_rhmd_hisq su3_rhmd_hisq_cpu',
+                               'make clean', 'rm -f .lastmake* localmake',
+                               'cd ../libraries', 'make -f Make_vanilla clean', 'cd ../ks_imp_rhmc',
+                               'make -j 1 su3_rhmd_hisq ' + ' '.join(milc_opts) + ' ' + ' '.join(milc_gpu),],
+                        install=['mkdir -p /usr/local/milc/bin',
+                                 'cp /var/tmp/milc_qcd/ks_imp_rhmc/su3_rhmd_hisq      /usr/local/milc/bin',
+                                 'cp /var/tmp/milc_qcd/ks_imp_rhmc/su3_rhmd_hisq_cpu  /usr/local/milc/bin',],
+                        prefix='/usr/local/milc',
+                        repository='https://github.com/milc-qcd/milc_qcd')
+Stage0 += environment(variables={'PATH': '/usr/local/milc/bin:$PATH'})
+
 
 ###############################################################################
 # Release stage
 ###############################################################################
-
 # centos8 /etc/yum.repos.d/rocm.repo
 rocm_centos8 = """
 [rocm]
@@ -178,35 +185,34 @@ gpgcheck=1
 gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
 """
 
-if True:
-    Stage1 += baseimage(image=runtime_image, _distro=base_distro)
+Stage1 += baseimage(image=runtime_image, _distro=base_distro)
 
-    Stage1 += packages(ospackages=[ 'wget', 'gnupg2', 'ca-certificates',])
+Stage1 += packages(ospackages=[ 'wget', 'gnupg2', 'ca-certificates',])
 
-    # libnuma.so.1 needed by xthi
-    Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'libnuma1'],yum=['mpfr', 'gmp', 'numactl-libs',])
+# libnuma.so.1 needed by xthi
+Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'libnuma1'],yum=['mpfr', 'gmp', 'numactl-libs',])
 
-    # ubuntu add rocm repo
-    if base_distro == 'ubuntu20':
-        Stage1 += shell(commands=[
-            'wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -',
-            'echo \'deb [arch=amd64] https://repo.radeon.com/rocm/apt/4.5.2/ ubuntu main\' | tee /etc/apt/sources.list.d/rocm.list',])
-    elif base_distro == 'centos8':
-        Stage1 += shell(commands=[
-            'mkdir -p /etc/yum.repos.d/',
-            'echo "' + rocm_centos8 + '" > /etc/yum.repos.d/rocm.repo', ])
-
-    # rocm runtime
-    Stage1 += packages(ospackages=[ 'rocm-language-runtime', 'rocm-hip-runtime', 'rocm-opencl-runtime', 'rocm-hip-libraries', ])
-
-    # copy runtime libomp
-    d = '/opt/rocm-4.5.2/llvm/lib/'
-    Stage1 += copy(_from='devel',src= [d+'libomp.so', d+'libompstub.so', d+'libomptarget.rtl.amdgpu.so', d+'libomptarget.rtl.x86_64.so', d+'libomptarget.so', ],
-                   dest=d)
-
-    Stage1 += Stage0.runtime()
-
-    Stage1 += environment(variables={
-        'PATH': '/usr/local/milc/bin:/usr/local/quda/bin:/usr/local/xthi/bin:$PATH',
-        'LD_LIBRARY_PATH': '/usr/local/quda/lib:$LD_LIBRARY_PATH', })
+# ubuntu add rocm repo
+if base_distro == 'ubuntu20':
+    Stage1 += shell(commands=[
+        'wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -',
+        'echo \'deb [arch=amd64] https://repo.radeon.com/rocm/apt/4.5.2/ ubuntu main\' | tee /etc/apt/sources.list.d/rocm.list',])
+elif base_distro == 'centos8':
+    Stage1 += shell(commands=[
+        'mkdir -p /etc/yum.repos.d/',
+        'echo "' + rocm_centos8 + '" > /etc/yum.repos.d/rocm.repo', ])
     pass
+
+# rocm runtime
+Stage1 += packages(ospackages=[ 'rocm-language-runtime', 'rocm-hip-runtime', 'rocm-opencl-runtime', 'rocm-hip-libraries', ])
+
+# copy runtime libomp
+d = '/opt/rocm-4.5.2/llvm/lib/'
+Stage1 += copy(_from='devel',src= [d+'libomp.so', d+'libompstub.so', d+'libomptarget.rtl.amdgpu.so', d+'libomptarget.rtl.x86_64.so', d+'libomptarget.so', ],
+               dest=d)
+
+Stage1 += Stage0.runtime()
+
+Stage1 += environment(variables={
+    'PATH': '/usr/local/milc/bin:/usr/local/quda/bin:/usr/local/xthi/bin:$PATH',
+    'LD_LIBRARY_PATH': '/usr/local/quda/lib:$LD_LIBRARY_PATH', })
