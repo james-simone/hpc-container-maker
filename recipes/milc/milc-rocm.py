@@ -13,10 +13,19 @@ Contents:
 # pylint: disable=invalid-name, undefined-variable, used-before-assignment
 # pylama: ignore=E0602
 
+# AMD gpus and llvm  https://llvm.org/docs/AMDGPUUsage.html#processors
+#
+# Architecture Name   ISA           GPUs
+# -----------------   ------------  ----------
+# gfx906              Vega20(GCN5)  MI50, MI60
+# gfx908              Vega20+CDNA   MI100
+# gfx90a              Vega20+CDNA2  MI210, MI250, MI250X
+#
 # command line options
-gpu_arch = USERARG.get('GPU_ARCH', 'gfx908')
+gpu_arch = USERARG.get('GPU_ARCH', 'gfx90a')
 use_ucx  = USERARG.get('ucx', None) is not None
 
+rocm_ver = '4.5.2'
 base_distro = 'ubuntu20'
 devel_image   = 'rocm/dev-ubuntu-20.04:4.5.2-complete'
 runtime_image = 'library/ubuntu:20.04'
@@ -37,7 +46,7 @@ Stage0 += packages(ospackages=[],
                         'gmp-devel',   'mpfr-devel', 'openssl-devel', 'numactl-devel', ])
 
 # cmake
-Stage0 += cmake(eula=True, version='3.22.2')
+Stage0 += cmake(eula=True, version='3.23.1')
 
 # GNU compilers
 compiler = gnu()
@@ -53,7 +62,7 @@ if use_ucx:
     Stage0 += ucx(cuda=False, version='1.12.0')
     pass
 
-Stage0 += openmpi(version='4.1.2',
+Stage0 += openmpi(version='4.1.3',
                cuda=False,
                ucx=use_ucx, infiniband=not use_ucx,
                toolchain=compiler.toolchain)
@@ -75,47 +84,55 @@ Stage0 += environment(variables={'PATH': '/usr/local/xthi/bin:$PATH'})
 Stage0 += shell(commands=[ 'locale-gen en_US', 'locale-gen en_US.UTF-8', 'update-locale LC_ALL=en_US.UTF-8',])
 
 # build QUDA
-# AMD gpus and llvm  https://llvm.org/docs/AMDGPUUsage.html#processors
-# MI100:  gfx908  "Arcturis": gfx90a
 if True:
-    Stage0 += generic_cmake(branch='feature/hip-compile-fixes',
+    ROCM_PATH = '/opt/rocm-' + rocm_ver
+    Stage0 += generic_cmake(branch='develop',
                             build_environment={
-                                'QUDA_GPU_ARCH': 'gfx908',
+                                'ROCM_PATH': ROCM_PATH,
+                                'CMAKE_PREFIX_PATH': ROCM_PATH+'/hip:'+ROCM_PATH+':${CMAKE_PREFIX_PATH}',
+                                'PATH': ROCM_PATH+'/bin:${PATH}',
+                                'LD_LIBRARY_PATH': ROCM_PATH+'/llvm/lib64:'+ROCM_PATH+'/llvm/lib:${LD_LIBRARY_PATH}',
+                                'OMPI_CC': 'hipcc',
+                                'OMPI_CXX': 'hipcc',
                             },
                             cmake_opts=['-DCMAKE_BUILD_TYPE=RELEASE',
                                         '-DCMAKE_CXX_COMPILER=hipcc',
                                         '-DCMAKE_C_COMPILER=hipcc',
                                         '-DCMAKE_C_STANDARD=99',
+                                        '-DCMAKE_PREFIX_PATH=${ROCM_PATH}/hip:${ROCM_PATH}',
                                         '-DMPI_CXX_COMPILER=mpicxx',
                                         '-DBUILD_TESTING=ON',
+                                        '-DQUDA_TARGET_TYPE=HIP',
+                                        '-DROCM_PATH=${ROCM_PATH}',
+                                        '-DQUDA_GPU_ARCH="'+gpu_arch+'"',
                                         '-DQUDA_OPENMP=OFF',
                                         '-DQUDA_MAX_MULTI_BLAS_N=9',
                                         '-DQUDA_BUILD_SHAREDLIB=ON',
                                         '-DQUDA_DIRAC_DEFAULT_OFF=ON',
                                         '-DQUDA_DIRAC_STAGGERED=ON',
-                                        '-DQUDA_DIRAC_WILSON=ON',
-                                        '-DQUDA_DOWNLOAD_USQCD=ON',
+                                        '-DQUDA_MULTIGRID=OFF',
+                                        #'-DQUDA_EIGEN_VERSION=3.3.9',
                                         '-DQUDA_FORCE_GAUGE=ON',
                                         '-DQUDA_FORCE_HISQ=ON',
                                         '-DQUDA_INTERFACE_MILC=ON',
                                         '-DQUDA_INTERFACE_QDP=ON',
+                                        '-DQUDA_INTERFACE_CPS=OFF',
+                                        '-DQUDA_INTERFACE_TIFR=OFF',
                                         '-DQUDA_MPI=OFF',
+                                        '-DQUDA_DOWNLOAD_USQCD=ON',
                                         '-DQUDA_QIO=ON',
                                         '-DQUDA_QMP=ON',
-                                        '-DROCM_PATH=/opt/rocm-4.5.2',
-                                        '-Dhip_DIR=/opt/rocm-4.5.2/hip/lib/cmake/hip',
-                                        '-Dhipfft_DIR=/opt/rocm-4.5.2/hipfft/lib/cmake/hipfft',
-                                        '-DAMDDeviceLibs_DIR=/opt/rocm-4.5.2/lib/cmake/AMDDeviceLibs',
-                                        '-Damd_comgr_DIR=/opt/rocm-4.5.2/lib/cmake/amd_comgr',
-                                        '-Dhsa-runtime64_DIR=/opt/rocm-4.5.2/lib/cmake/hsa-runtime64',
-                                        '-Dhiprand_DIR=/opt/rocm-4.5.2/hiprand/lib/cmake/hiprand',
-                                        '-Drocrand_DIR=/opt/rocm-4.5.2/rocrand/lib/cmake/rocrand',
-                                        '-Dhipblas_DIR=/opt/rocm-4.5.2/hipblas/lib/cmake/hipblas',
-                                        '-Drocblas_DIR=/opt/rocm-4.5.2/rocblas/lib/cmake/rocblas',
-                                        '-Dhipcub_DIR=/opt/rocm-4.5.2/hipcub/lib/cmake/hipcub',
-                                        '-Drocprim_DIR=/opt/rocm-4.5.2/rocprim/lib/cmake/rocprim',
-                                        '-DGPU_TARGETS=gfx908',
-                                        '-DQUDA_TARGET_TYPE=HIP',
+                                        #'-Dhip_DIR=$ROCM_PATH/hip/lib/cmake/hip',
+                                        #'-Dhipfft_DIR=$ROCM_PATH/hipfft/lib/cmake/hipfft',
+                                        #'-DAMDDeviceLibs_DIR=$ROCM_PATH/lib/cmake/AMDDeviceLibs',
+                                        #'-Damd_comgr_DIR=$ROCM_PATH/lib/cmake/amd_comgr',
+                                        #'-Dhsa-runtime64_DIR=$ROCM_PATH/lib/cmake/hsa-runtime64',
+                                        #'-Dhiprand_DIR=$ROCM_PATH/hiprand/lib/cmake/hiprand',
+                                        #'-Drocrand_DIR=$ROCM_PATH/rocrand/lib/cmake/rocrand',
+                                        #'-Dhipblas_DIR=$ROCM_PATH/hipblas/lib/cmake/hipblas',
+                                        #'-Drocblas_DIR=$ROCM_PATH/rocblas/lib/cmake/rocblas',
+                                        #'-Dhipcub_DIR=$ROCM_PATH/hipcub/lib/cmake/hipcub',
+                                        #'-Drocprim_DIR=$ROCM_PATH/rocprim/lib/cmake/rocprim',
                                     ],
                             install=True,
                             ldconfig=False,
@@ -142,7 +159,7 @@ milc_opts = [
     'QIOPAR=/usr/local/quda',
     'LIBSCIDAC="-Wl,-rpath=/usr/local/quda/lib -L/usr/local/quda/lib -lqmp -lqio -llime"',]
 milc_gpu = [
-    'CUDA_HOME=/opt/rocm-4.5.2',
+    'CUDA_HOME=$ROCM_PATH',
     'QUDA_HOME=/usr/local/quda',
     'LD_FLAGS="-L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64"',
     'LIBQUDA="-Wl,-rpath=/usr/local/quda/lib -L/usr/local/quda/lib -llime -lquda"',
@@ -176,10 +193,10 @@ Stage0 += environment(variables={'PATH': '/usr/local/milc/bin:$PATH'})
 # Release stage
 ###############################################################################
 # centos8 /etc/yum.repos.d/rocm.repo
-rocm_centos8 = """
+rocm_centos8 = f"""
 [rocm]
 name=rocm
-baseurl=https://repo.radeon.com/rocm/centos8/4.5.2/
+baseurl=https://repo.radeon.com/rocm/centos8/{rocm_ver}/
 enabled=1
 gpgcheck=1
 gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
@@ -196,7 +213,7 @@ Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'libnuma1'],yum=['mpfr', 'gmp', 
 if base_distro == 'ubuntu20':
     Stage1 += shell(commands=[
         'wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -',
-        'echo \'deb [arch=amd64] https://repo.radeon.com/rocm/apt/4.5.2/ ubuntu main\' | tee /etc/apt/sources.list.d/rocm.list',])
+        'echo \'deb [arch=amd64] https://repo.radeon.com/rocm/apt/'+rocm_ver+'/ ubuntu main\' | tee /etc/apt/sources.list.d/rocm.list',])
 elif base_distro == 'centos8':
     Stage1 += shell(commands=[
         'mkdir -p /etc/yum.repos.d/',
@@ -207,7 +224,7 @@ elif base_distro == 'centos8':
 Stage1 += packages(ospackages=[ 'rocm-language-runtime', 'rocm-hip-runtime', 'rocm-opencl-runtime', 'rocm-hip-libraries', ])
 
 # copy runtime libomp
-d = '/opt/rocm-4.5.2/llvm/lib/'
+d = ROCM_PATH+'/llvm/lib/'
 Stage1 += copy(_from='devel',src= [d+'libomp.so', d+'libompstub.so', d+'libomptarget.rtl.amdgpu.so', d+'libomptarget.rtl.x86_64.so', d+'libomptarget.so', ],
                dest=d)
 
