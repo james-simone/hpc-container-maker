@@ -151,8 +151,8 @@ Stage1 += baseimage(image=runtime_image, _distro=base_distro)
 
 Stage1 += packages(ospackages=[ 'wget', 'gnupg2', 'ca-certificates',])
 
-# libnuma.so.1 needed by xthi
-Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'libnuma1'],yum=['mpfr', 'gmp', 'numactl-libs',])
+# numactl tool and libnuma.so.1 needed by xthi
+Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'numactl', 'libnuma1'],yum=['mpfr', 'gmp', 'numactl', 'numactl-libs',])
 
 # ubuntu add rocm repo
 if base_distro == 'ubuntu20':
