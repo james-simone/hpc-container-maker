@@ -5,8 +5,8 @@ Contents:
   Ubuntu 20.04 (LTS)
   CUDA version 11.6
   GNU compilers (upstream; 9.3.0)
-  OFED Mellanox 5.4-1.0.3.0 (ConnectX gen 4--6)
-  OpenMPI version 4.1.2
+  OFED Mellanox 5.6-2.0.9.0 (ConnectX gen 4--6)
+  OpenMPI version 4.1.4
   QUDA version develop
 """
 
@@ -14,11 +14,15 @@ Contents:
 # pylama: ignore=E0602
 
 # command line options
-gpu_arch = USERARG.get('GPU_ARCH', 'sm_70')
-use_ucx  = USERARG.get('ucx', None) is not None
+gpu_arch = USERARG.get('GPU_ARCH', 'sm_80')
+use_ucx  = USERARG.get('ucx', 1) == 1       # default is ucx
 
-devel_image   = 'nvcr.io/nvidia/cuda:11.6.0-devel-ubuntu20.04'
-runtime_image = 'nvcr.io/nvidia/cuda:11.6.0-base-ubuntu20.04'
+if gpu_arch not in ( 'sm_80', 'sm_70', 'sm_60', 'sm_37' ):
+    print('unknown compute capability:', gpu_arch)
+    raise
+
+devel_image   = 'nvcr.io/nvidia/cuda:11.6.2-devel-ubuntu20.04'
+runtime_image = 'nvcr.io/nvidia/cuda:11.6.2-base-ubuntu20.04'
 
 # add docstring to Dockerfile
 Stage0 += comment(__doc__.strip(), reformat=False)
@@ -28,21 +32,38 @@ Stage0 += comment(__doc__.strip(), reformat=False)
 ###############################################################################
 Stage0 += baseimage(image=devel_image, _as='devel')
 
+# required packages
+pkgs = packages(ospackages=[],
+                apt=['autoconf', 'automake', 'ca-certificates', 'git',
+                     'libgmp-dev', 'libmpfr-dev', 'libssl-dev', 'libnuma-dev' ],
+                yum=['autoconf', 'automake', 'ca-certificates', 'git',
+                     'gmp-devel',   'mpfr-devel', 'openssl-devel', 'numactl-devel', ])
+Stage0 += pkgs
+
+# cmake
+Stage0 += cmake(eula=True, version='3.23.2')
+
+# Python3 for scripting in runtime container
+py = python(python2=False)
+Stage0 += py
+
 # GNU compilers
 compiler = gnu()
 Stage0 += compiler
 
 # Mellanox OFED
-Stage0 += mlnx_ofed(version='5.4-1.0.3.0')
+Stage0 += mlnx_ofed(version='5.6-2.0.9.0')
 
 # OpenMPI
 if use_ucx:
     # UCX depends on KNEM (use latest versions as of 2022-01-22)
     Stage0 += knem(version='1.1.4')
-    Stage0 += ucx(cuda=True, version='1.12.0')
+    # build with gdrcopy
+    Stage0 += gdrcopy()
+    Stage0 += ucx(cuda=True,gdrcopy=True,knem=True,ofed=True,version='1.12.1')
     pass
 
-Stage0 += openmpi(version='4.1.2',
+Stage0 += openmpi(version='4.1.4',
                   cuda=True,
                   ucx=use_ucx, infiniband=not use_ucx,
                   toolchain=compiler.toolchain)
@@ -51,18 +72,12 @@ if not use_ucx:
     Stage0 += shell(commands=[
         'echo "btl_openib_allow_ib = 1" >> /usr/local/openmpi/etc/openmpi-mca-params.conf'])
 
-# cmake and git
-Stage0 += cmake(eula=True, version='3.22.2')
-Stage0 += packages(ospackages=['ca-certificates', 'git'])
-
 # build xthi
-Stage0 += generic_build(branch='master',
-                        build=['make all CC=gcc MPICC=/usr/local/openmpi/bin/mpicc', ],
-                        install=['mkdir -p /usr/local/xthi/bin',
-                                 'cp /var/tmp/xthi/xthi /var/tmp/xthi/xthi.nompi /usr/local/xthi/bin'],
+Stage0 += generic_cmake(branch='feature/gpu',
+                        cmake_opts=['-DGPU=NVIDIA', ],
+                        install=True,
                         prefix='/usr/local/xthi',
-                        repository='https://git.ecdf.ed.ac.uk/dmckain/xthi.git')
-Stage0 += environment(variables={'PATH': '/usr/local/xthi/bin:$PATH'})
+                        repository='https://github.com/james-simone/xthi.git')
 
 # build QUDA
 Stage0 += generic_cmake(branch='develop',
@@ -151,9 +166,10 @@ Stage0 += environment(variables={'PATH': '/usr/local/milc/bin:$PATH'})
 Stage1 += baseimage(image=runtime_image)
 
 Stage1 += Stage0.runtime()
+Stage1 += py.runtime()
 
-# libnuma.so.1 needed by xthi
-Stage1 += packages(apt=['libnuma1'],yum=['numactl-libs',])
+# numactl tool and libnuma.so.1 needed by xthi
+Stage1 += packages(apt=['numactl', 'libnuma1'],yum=['numactl', 'numactl-libs',])
 
 Stage1 += environment(variables={
     'PATH': '/usr/local/milc/bin:/usr/local/quda/bin:/usr/local/xthi/bin:$PATH',

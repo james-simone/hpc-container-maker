@@ -3,11 +3,11 @@ MILC[develop] app: su3_rhmd_hisq
 
 Contents:
   Ubuntu 20.04 (LTS)
-  ROCM 4.5.2
+  ROCM 5.1.3
   GNU compilers (upstream; 9.3.0)
-  OFED Mellanox 5.4-1.0.3.0 (ConnectX gen 4--6)
-  OpenMPI version 4.1.2
-  Quda version feature/hip-compile-fixes
+  OFED Mellanox 5.6-2.0.9.0 (ConnectX gen 4--6)
+  OpenMPI version 4.1.4
+  Quda version feature
 """
 
 # pylint: disable=invalid-name, undefined-variable, used-before-assignment
@@ -22,12 +22,12 @@ Contents:
 # gfx90a              Vega20+CDNA2  MI210, MI250, MI250X
 #
 # command line options
-gpu_arch = USERARG.get('GPU_ARCH', 'gfx90a')
-use_ucx  = USERARG.get('ucx', None) is not None
+gpu_arch = USERARG.get('GPU_ARCH', 'gfx90a;gfx908;gfx906')
+use_ucx  = USERARG.get('ucx', 1) == 1 # default is ucx
 
-rocm_ver = '4.5.2'
+rocm_ver = '5.1.3'
 base_distro = 'ubuntu20'
-devel_image   = 'rocm/dev-ubuntu-20.04:4.5.2-complete'
+devel_image   = 'rocm/dev-ubuntu-20.04:5.1.3-complete'
 runtime_image = 'library/ubuntu:20.04'
 
 # add docstring to Dockerfile
@@ -46,23 +46,27 @@ Stage0 += packages(ospackages=[],
                         'gmp-devel',   'mpfr-devel', 'openssl-devel', 'numactl-devel', ])
 
 # cmake
-Stage0 += cmake(eula=True, version='3.23.1')
+Stage0 += cmake(eula=True, version='3.23.2')
+
+# Python3 for scripting in runtime container
+py = python(python2=False)
+Stage0 += py
 
 # GNU compilers
 compiler = gnu()
 Stage0 += compiler
 
 # Mellanox OFED
-Stage0 += mlnx_ofed(version='5.4-1.0.3.0')
+Stage0 += mlnx_ofed(version='5.6-2.0.9.0')
 
 # OpenMPI
 if use_ucx:
     # UCX depends on KNEM (use latest versions as of 2022-01-22)
     Stage0 += knem(version='1.1.4')
-    Stage0 += ucx(cuda=False, version='1.12.0')
+    Stage0 += ucx(cuda=False,with_rocm='/opt/rocm',gdrcopy=False,knem=True,ofed=True,version='1.12.1')
     pass
 
-Stage0 += openmpi(version='4.1.3',
+Stage0 += openmpi(version='4.1.4',
                cuda=False,
                ucx=use_ucx, infiniband=not use_ucx,
                toolchain=compiler.toolchain)
@@ -72,77 +76,61 @@ if not use_ucx:
         'echo "btl_openib_allow_ib = 1" >> /usr/local/openmpi/etc/openmpi-mca-params.conf'])
 
 # build xthi
-Stage0 += generic_build(branch='master',
-                        build=['make all CC=gcc MPICC=/usr/local/openmpi/bin/mpicc', ],
-                        install=['mkdir -p /usr/local/xthi/bin',
-                                 'cp /var/tmp/xthi/xthi /var/tmp/xthi/xthi.nompi /usr/local/xthi/bin'],
+Stage0 += generic_cmake(branch='feature/gpu',
+                        cmake_opts=['-DGPU=AMD', ],
+                        install=True,
                         prefix='/usr/local/xthi',
-                        repository='https://git.ecdf.ed.ac.uk/dmckain/xthi.git')
-Stage0 += environment(variables={'PATH': '/usr/local/xthi/bin:$PATH'})
+                        repository='https://github.com/james-simone/xthi.git')
 
 # fix locale to stop perl from complaining
 Stage0 += shell(commands=[ 'locale-gen en_US', 'locale-gen en_US.UTF-8', 'update-locale LC_ALL=en_US.UTF-8',])
 
 # build QUDA
-if True:
-    ROCM_PATH = '/opt/rocm-' + rocm_ver
-    Stage0 += generic_cmake(branch='develop',
-                            build_environment={
-                                'ROCM_PATH': ROCM_PATH,
-                                'CMAKE_PREFIX_PATH': ROCM_PATH+'/hip:'+ROCM_PATH+':${CMAKE_PREFIX_PATH}',
-                                'PATH': ROCM_PATH+'/bin:${PATH}',
-                                'LD_LIBRARY_PATH': ROCM_PATH+'/llvm/lib64:'+ROCM_PATH+'/llvm/lib:${LD_LIBRARY_PATH}',
-                                'OMPI_CC': 'hipcc',
-                                'OMPI_CXX': 'hipcc',
-                            },
-                            cmake_opts=['-DCMAKE_BUILD_TYPE=RELEASE',
-                                        '-DCMAKE_CXX_COMPILER=hipcc',
-                                        '-DCMAKE_C_COMPILER=hipcc',
-                                        '-DCMAKE_C_STANDARD=99',
-                                        '-DCMAKE_PREFIX_PATH=${ROCM_PATH}/hip:${ROCM_PATH}',
-                                        '-DMPI_CXX_COMPILER=mpicxx',
-                                        '-DBUILD_TESTING=ON',
-                                        '-DQUDA_TARGET_TYPE=HIP',
-                                        '-DROCM_PATH=${ROCM_PATH}',
-                                        '-DQUDA_GPU_ARCH="'+gpu_arch+'"',
-                                        '-DQUDA_OPENMP=OFF',
-                                        '-DQUDA_MAX_MULTI_BLAS_N=9',
-                                        '-DQUDA_BUILD_SHAREDLIB=ON',
-                                        '-DQUDA_DIRAC_DEFAULT_OFF=ON',
-                                        '-DQUDA_DIRAC_STAGGERED=ON',
-                                        '-DQUDA_MULTIGRID=OFF',
-                                        #'-DQUDA_EIGEN_VERSION=3.3.9',
-                                        '-DQUDA_FORCE_GAUGE=ON',
-                                        '-DQUDA_FORCE_HISQ=ON',
-                                        '-DQUDA_INTERFACE_MILC=ON',
-                                        '-DQUDA_INTERFACE_QDP=ON',
-                                        '-DQUDA_INTERFACE_CPS=OFF',
-                                        '-DQUDA_INTERFACE_TIFR=OFF',
-                                        '-DQUDA_MPI=OFF',
-                                        '-DQUDA_DOWNLOAD_USQCD=ON',
-                                        '-DQUDA_QIO=ON',
-                                        '-DQUDA_QMP=ON',
-                                        #'-Dhip_DIR=$ROCM_PATH/hip/lib/cmake/hip',
-                                        #'-Dhipfft_DIR=$ROCM_PATH/hipfft/lib/cmake/hipfft',
-                                        #'-DAMDDeviceLibs_DIR=$ROCM_PATH/lib/cmake/AMDDeviceLibs',
-                                        #'-Damd_comgr_DIR=$ROCM_PATH/lib/cmake/amd_comgr',
-                                        #'-Dhsa-runtime64_DIR=$ROCM_PATH/lib/cmake/hsa-runtime64',
-                                        #'-Dhiprand_DIR=$ROCM_PATH/hiprand/lib/cmake/hiprand',
-                                        #'-Drocrand_DIR=$ROCM_PATH/rocrand/lib/cmake/rocrand',
-                                        #'-Dhipblas_DIR=$ROCM_PATH/hipblas/lib/cmake/hipblas',
-                                        #'-Drocblas_DIR=$ROCM_PATH/rocblas/lib/cmake/rocblas',
-                                        #'-Dhipcub_DIR=$ROCM_PATH/hipcub/lib/cmake/hipcub',
-                                        #'-Drocprim_DIR=$ROCM_PATH/rocprim/lib/cmake/rocprim',
-                                    ],
-                            install=True,
-                            ldconfig=False,
-                            runtime=[
-                                '/usr/local/quda',
-                            ],
-                            prefix='/usr/local/quda',
-                            repository='https://github.com/lattice/quda.git')
-
-    pass
+ROCM_PATH = '/opt/rocm-' + rocm_ver
+Stage0 += generic_cmake(branch='develop',
+                        build_environment={
+                            'ROCM_PATH': ROCM_PATH,
+                            'CMAKE_PREFIX_PATH': ROCM_PATH+'/hip:'+ROCM_PATH+':${CMAKE_PREFIX_PATH}',
+                            'PATH': ROCM_PATH+'/bin:${PATH}',
+                            'LD_LIBRARY_PATH': ROCM_PATH+'/llvm/lib64:'+ROCM_PATH+'/llvm/lib:${LD_LIBRARY_PATH}',
+                            'OMPI_CC': 'hipcc',
+                            'OMPI_CXX': 'hipcc',
+                        },
+                        cmake_opts=['-DCMAKE_BUILD_TYPE=RELEASE',
+                                    '-DCMAKE_CXX_COMPILER=hipcc',
+                                    '-DCMAKE_C_COMPILER=hipcc',
+                                    '-DCMAKE_C_STANDARD=99',
+                                    '-DCMAKE_PREFIX_PATH=${ROCM_PATH}/hip:${ROCM_PATH}',
+                                    '-DMPI_CXX_COMPILER=mpicxx',
+                                    '-DBUILD_TESTING=ON',
+                                    '-DQUDA_TARGET_TYPE=HIP',
+                                    '-DROCM_PATH=${ROCM_PATH}',
+                                    '-DQUDA_GPU_ARCH="'+gpu_arch+'"',
+                                    '-DQUDA_OPENMP=OFF',
+                                    '-DQUDA_MAX_MULTI_BLAS_N=9',
+                                    '-DQUDA_BUILD_SHAREDLIB=ON',
+                                    '-DQUDA_DIRAC_DEFAULT_OFF=ON',
+                                    '-DQUDA_DIRAC_STAGGERED=ON',
+                                    '-DQUDA_MULTIGRID=OFF',
+                                    #'-DQUDA_EIGEN_VERSION=3.3.9',
+                                    '-DQUDA_FORCE_GAUGE=ON',
+                                    '-DQUDA_FORCE_HISQ=ON',
+                                    '-DQUDA_INTERFACE_MILC=ON',
+                                    '-DQUDA_INTERFACE_QDP=ON',
+                                    '-DQUDA_INTERFACE_CPS=OFF',
+                                    '-DQUDA_INTERFACE_TIFR=OFF',
+                                    '-DQUDA_MPI=OFF',
+                                    '-DQUDA_DOWNLOAD_USQCD=ON',
+                                    '-DQUDA_QIO=ON',
+                                    '-DQUDA_QMP=ON',
+                                ],
+                        install=True,
+                        ldconfig=False,
+                        runtime=[
+                            '/usr/local/quda',
+                        ],
+                        prefix='/usr/local/quda',
+                        repository='https://github.com/lattice/quda.git')
 
 # build MILC
 milc_opts = [
@@ -207,7 +195,7 @@ Stage1 += baseimage(image=runtime_image, _distro=base_distro)
 Stage1 += packages(ospackages=[ 'wget', 'gnupg2', 'ca-certificates',])
 
 # libnuma.so.1 needed by xthi
-Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'libnuma1'],yum=['mpfr', 'gmp', 'numactl-libs',])
+Stage1 += packages(apt=['libmpfr6', 'libgmp10', 'numactl', 'libnuma1'],yum=['mpfr', 'gmp', 'numactl', 'numactl-libs',])
 
 # ubuntu add rocm repo
 if base_distro == 'ubuntu20':
@@ -225,11 +213,13 @@ Stage1 += packages(ospackages=[ 'rocm-language-runtime', 'rocm-hip-runtime', 'ro
 
 # copy runtime libomp
 d = ROCM_PATH+'/llvm/lib/'
-Stage1 += copy(_from='devel',src= [d+'libomp.so', d+'libompstub.so', d+'libomptarget.rtl.amdgpu.so', d+'libomptarget.rtl.x86_64.so', d+'libomptarget.so', ],
+Stage1 += copy(_from='devel',
+               src= [d+'libomp.so', d+'libompstub.so', d+'libomptarget.rtl.amdgpu.so', d+'libomptarget.rtl.x86_64.so', d+'libomptarget.so', ],
                dest=d)
 
 Stage1 += Stage0.runtime()
+Stage1 += py.runtime()
 
 Stage1 += environment(variables={
     'PATH': '/usr/local/milc/bin:/usr/local/quda/bin:/usr/local/xthi/bin:$PATH',
-    'LD_LIBRARY_PATH': '/usr/local/quda/lib:$LD_LIBRARY_PATH', })
+    'LD_LIBRARY_PATH': '/usr/local/quda/lib:/opt/rocm/lib:/opt/rocm/hip/lib:$LD_LIBRARY_PATH', })
