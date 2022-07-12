@@ -62,7 +62,14 @@ if use_ucx:
     Stage0 += ucx(cuda=True,gdrcopy=True,knem=True,ofed=True,version='1.12.1')
     pass
 
+# Some slurm installations do not have --mpi=pmix and may need pmi2 support in OpenMPI
+pmi2 = slurm_pmi2(version='21.08.8') # /usr/local/slurm-pmi2
+Stage0 += pmi2
+pmix = pmix(version='3.2.3') # SLURM 18.08+ PMIx v3.x
+Stage0 += pmix
+
 Stage0 += openmpi(version='4.1.4',
+               pmi='/usr/local/slurm-pmi2',pmix='/usr/local/pmix',
                cuda=True,
                ucx=use_ucx, infiniband=not use_ucx,
                toolchain=compiler.toolchain)
@@ -160,6 +167,9 @@ Stage1 += baseimage(image=runtime_image)
 
 Stage1 += Stage0.runtime()
 Stage1 += py.runtime()
+
+#Stage1 += pmi2.runtime()
+#Stage1 += pmix.runtime()
 
 # numactl tool and libnuma.so.1 needed by xthi
 Stage1 += packages(apt=['numactl', 'libnuma1'],yum=['numactl', 'numactl-libs',])
