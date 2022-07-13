@@ -145,6 +145,7 @@ Stage0 += generic_autotools(branch='develop',          #commit='135808d',
                                 'LIBS': '"-lmpi"',
                             },
                             configure_opts = [
+                                '--enable-setdevice',  # set device to CUDA_VISIBLE_DEVICES[local_rank]
                                 '--enable-comms=mpi3-auto',
                                 '--disable-unified',
                                 '--enable-shm=nvlink',
