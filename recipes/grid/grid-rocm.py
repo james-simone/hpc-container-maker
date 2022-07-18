@@ -56,7 +56,14 @@ if use_ucx:
     Stage0 += ucx(cuda=False,with_rocm='/opt/rocm',gdrcopy=False,knem=True,ofed=True,version='1.12.1')
     pass
 
+# Some slurm installations do not have --mpi=pmix and may need pmi2 support in OpenMPI
+pmi2 = slurm_pmi2(version='21.08.8') # /usr/local/slurm-pmi2
+Stage0 += pmi2
+pmix = pmix(version='3.2.3') # SLURM 18.08+ PMIx v3.x
+Stage0 += pmix
+
 Stage0 += openmpi(version='4.1.4',
+               pmi='/usr/local/slurm-pmi2',pmix='/usr/local/pmix',
                cuda=False,
                ucx=use_ucx, infiniband=not use_ucx,
                toolchain=compiler.toolchain)
@@ -119,6 +126,7 @@ Stage0 += generic_autotools(branch='develop',   # commit='135808d',
                                 'LIBS': '"-lmpi"',
                             },
                             configure_opts = [
+                                '--enable-setdevice',  # set device to CUDA_VISIBLE_DEVICES[local_rank]
                                 '--enable-comms=mpi3-auto',
                                 '--disable-unified',
                                 '--enable-shm=nvlink',
@@ -165,7 +173,7 @@ elif base_distro == 'centos8':
         'echo "' + rocm_centos8 + '" > /etc/yum.repos.d/rocm.repo', ])
 
 # rocm runtime
-Stage1 += packages(ospackages=[ 'rocm-opencl-runtime', 'rocm-hip-runtime', 'rocm-language-runtime', ])
+Stage1 += packages(ospackages=[ 'rocm-opencl-runtime', 'rocm-hip-runtime', 'rocm-language-runtime', 'rocm-smi-lib', ])
 
 # copy runtime libomp
 d = '/opt/rocm-5.1.3/llvm/lib/'
@@ -176,7 +184,12 @@ Stage1 += copy(_from='devel',
 Stage1 += Stage0.runtime()
 Stage1 += py.runtime()
 
+# rocm-smi may look for the interpeter under /usr/libexec
+Stage1 += shell(commands=['mkdir /usr/libexec',
+                          'ln -s /usr/bin/python3 /usr/libexec/platform-python',])
+
 Stage1 += environment(variables={
     'PATH': '/usr/local/grid/bin:/usr/local/xthi/bin:$PATH',
-    'LD_LIBRARY_PATH': '/opt/rocm/lib:/opt/rocm/hip/lib:$LD_LIBRARY_PATH', })
+    'LD_LIBRARY_PATH': '/opt/rocm/lib:/opt/rocm/hip/lib:$LD_LIBRARY_PATH',
+    'PYTHONPATH': '/opt/rocm/rocm_smi/bindings:$PYTHONPATH'})
 
