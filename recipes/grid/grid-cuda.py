@@ -177,4 +177,4 @@ Stage1 += packages(apt=['numactl', 'libnuma1'],yum=['numactl', 'numactl-libs',])
 
 Stage1 += environment(variables={
     'PATH': '/usr/local/xthi/bin:$PATH',
-    'LD_LIBRARY_PATH': ':$LD_LIBRARY_PATH', })
+    'LD_LIBRARY_PATH': '$LD_LIBRARY_PATH', })
