@@ -63,7 +63,14 @@ if use_ucx:
     Stage0 += ucx(cuda=True,gdrcopy=True,knem=True,ofed=True,version='1.12.1')
     pass
 
+# Some slurm installations do not have --mpi=pmix and may need pmi2 support in OpenMPI
+pmi2 = slurm_pmi2(version='21.08.8') # /usr/local/slurm-pmi2
+Stage0 += pmi2
+pmix = pmix(version='3.2.3') # SLURM 18.08+ PMIx v3.x
+Stage0 += pmix
+
 Stage0 += openmpi(version='4.1.4',
+                  pmi='/usr/local/slurm-pmi2',pmix='/usr/local/pmix',
                   cuda=True,
                   ucx=use_ucx, infiniband=not use_ucx,
                   toolchain=compiler.toolchain)
@@ -109,6 +116,7 @@ Stage0 += generic_cmake(branch='develop',
                         runtime=[
                             '/usr/local/quda',
                             '/usr/local/cuda-11.6/targets/x86_64-linux/lib/libcublas{,Lt}.so.11.*',
+                            '/usr/local/cuda-11.6/targets/x86_64-linux/lib/libcufft{,w}.so.10.*',
                         ],
                         prefix='/usr/local/quda',
                         repository='https://github.com/lattice/quda.git')
