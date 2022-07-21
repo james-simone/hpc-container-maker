@@ -22,7 +22,7 @@ Contents:
 # gfx90a              Vega20+CDNA2  MI210, MI250, MI250X
 #
 # command line options
-gpu_arch = USERARG.get('GPU_ARCH', 'gfx90a;gfx908;gfx906')
+gpu_arch = USERARG.get('GPU_ARCH', 'gfx90a') # QUDA cmake gets confused when specifying multi-architectures
 use_ucx  = USERARG.get('ucx', 1) == 1 # default is ucx
 
 rocm_ver = '5.1.3'
@@ -66,7 +66,14 @@ if use_ucx:
     Stage0 += ucx(cuda=False,with_rocm='/opt/rocm',gdrcopy=False,knem=True,ofed=True,version='1.12.1')
     pass
 
+# Some slurm installations do not have --mpi=pmix and may need pmi2 support in OpenMPI
+pmi2 = slurm_pmi2(version='21.08.8') # /usr/local/slurm-pmi2
+Stage0 += pmi2
+pmix = pmix(version='3.2.3') # SLURM 18.08+ PMIx v3.x
+Stage0 += pmix
+
 Stage0 += openmpi(version='4.1.4',
+               pmi='/usr/local/slurm-pmi2',pmix='/usr/local/pmix',
                cuda=False,
                ucx=use_ucx, infiniband=not use_ucx,
                toolchain=compiler.toolchain)
@@ -109,10 +116,16 @@ Stage0 += generic_cmake(branch='develop',
                                     '-DQUDA_OPENMP=OFF',
                                     '-DQUDA_MAX_MULTI_BLAS_N=9',
                                     '-DQUDA_BUILD_SHAREDLIB=ON',
-                                    '-DQUDA_DIRAC_DEFAULT_OFF=ON',
+                                    '-DQUDA_DIRAC_CLOVER=OFF',
+                                    '-DQUDA_DIRAC_CLOVER_HASENBUSCH=OFF',
+                                    '-DQUDA_DIRAC_DOMAIN_WALL=OFF',
+                                    '-DQUDA_DIRAC_NDEG_TWISTED_CLOVER=OFF',
+                                    '-DQUDA_DIRAC_NDEG_TWISTED_MASS=OFF',
                                     '-DQUDA_DIRAC_STAGGERED=ON',
+                                    '-DQUDA_DIRAC_TWISTED_CLOVER=OFF',
+                                    '-DQUDA_DIRAC_TWISTED_MASS=OFF',
+                                    '-DQUDA_DIRAC_WILSON=OFF',
                                     '-DQUDA_MULTIGRID=OFF',
-                                    #'-DQUDA_EIGEN_VERSION=3.3.9',
                                     '-DQUDA_FORCE_GAUGE=ON',
                                     '-DQUDA_FORCE_HISQ=ON',
                                     '-DQUDA_INTERFACE_MILC=ON',
@@ -209,7 +222,7 @@ elif base_distro == 'centos8':
     pass
 
 # rocm runtime
-Stage1 += packages(ospackages=[ 'rocm-language-runtime', 'rocm-hip-runtime', 'rocm-opencl-runtime', 'rocm-hip-libraries', ])
+Stage1 += packages(ospackages=[ 'rocm-language-runtime', 'rocm-hip-runtime', 'rocm-opencl-runtime', 'rocm-hip-libraries', 'rocm-smi-lib', ])
 
 # copy runtime libomp
 d = ROCM_PATH+'/llvm/lib/'
@@ -220,6 +233,11 @@ Stage1 += copy(_from='devel',
 Stage1 += Stage0.runtime()
 Stage1 += py.runtime()
 
+# rocm-smi may look for the interpeter under /usr/libexec
+Stage1 += shell(commands=['mkdir /usr/libexec',
+                          'ln -s /usr/bin/python3 /usr/libexec/platform-python',])
+
 Stage1 += environment(variables={
     'PATH': '/usr/local/milc/bin:/usr/local/quda/bin:/usr/local/xthi/bin:$PATH',
-    'LD_LIBRARY_PATH': '/usr/local/quda/lib:/opt/rocm/lib:/opt/rocm/hip/lib:$LD_LIBRARY_PATH', })
+    'LD_LIBRARY_PATH': '/usr/local/quda/lib:/opt/rocm/lib:/opt/rocm/hip/lib:$LD_LIBRARY_PATH',
+    'PYTHONPATH': '/opt/rocm/rocm_smi/bindings:$PYTHONPATH'})
