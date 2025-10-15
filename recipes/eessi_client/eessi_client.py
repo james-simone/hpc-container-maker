@@ -24,10 +24,7 @@ osimage = 'almalinux:9'
 distro = 'rockylinux9'
 
 # version of FUSE overlayfs to install
-fuseoverlayfsversion='1.14'
-
-#TODO:
-# create /etc/profile.d/z00_lmod.sh and /etc/profile.d/z00_lmod.csh adding /cvmfs/software.eessi.io/init/modules
+fuseoverlayfsversion='1.15'
 
 Stage0 += baseimage(image=osimage,_as='final',_distro=distro)
 Stage0 += packages(epel=True,yum=['sudo', 'vim', 'openssh-clients', 'lsof', 'strace', 'libibverbs', 'Lmod'])
