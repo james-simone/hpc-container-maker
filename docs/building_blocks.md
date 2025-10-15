@@ -598,10 +598,10 @@ Anaconda should be installed.  The default is False.
 
 - __python_subversion__: The Python version to install.  This value is
 ignored if the Conda version is less than 4.8.  The default is
-`py310` if using Python 3, and `py27` if using Python 2.
+`py312` if using Python 3, and `py27` if using Python 2.
 
 - __version__: The version of Anaconda to download.  The default value
-is `23.1.0-1` if using Python 3, and `4.8.3` if using Python 2.
+is `25.1.1-2` if using Python 3, and `4.8.3` if using Python 2.
 
 __Examples__
 
@@ -840,12 +840,15 @@ default values are `make` and `wget`.
 - __prefix__: The top level install location.  The default value is
 `/usr/local/gdrcopy`.
 
+- __targets__: List of make targets to build.  The default values are
+`lib` and `lib_install`.
+
 - __toolchain__: The toolchain object.  This should be used if
 non-default compilers or other toolchain options are needed.  The
 default is empty.
 
 - __version__: The version of gdrcopy source to download.  The default
-value is `2.2`.
+value is `2.4.4`.
 
 __Examples__
 
@@ -1537,13 +1540,19 @@ __Parameters__
 
 
 - __buildlabel__: The build label assigned by Mellanox to the tarball.
-For versions 2.17 and later, the default value is `cuda12`.
-For version 2.16 the default value is `cuda12-gdrcopy2-nccl2.18`.
-For version 2.15 the default value is `cuda12-gdrcopy2-nccl2.17`.
-For version 2.14 the default value is `cuda11-gdrcopy2-nccl2.16`.
-For versions 2.12 and 2.13 the default value is `cuda11-gdrcopy2-nccl2.12`.
-For versions 2.10 and 2.11 the default value is `cuda11-gdrcopy2-nccl2.11`.
-This value is ignored for HPC-X version 2.9 and earlier.
+For version 2.24 and later, the default value is the value of
+`cuda` parameter.  For versions 2.17 through 2.23, the default
+value is `cuda12`.  For version 2.16 the default value is
+`cuda12-gdrcopy2-nccl2.18`.  For version 2.15 the default value is
+`cuda12-gdrcopy2-nccl2.17`.  For version 2.14 the default value is
+`cuda11-gdrcopy2-nccl2.16`.  For versions 2.12 and 2.13 the
+default value is `cuda11-gdrcopy2-nccl2.12`.  For versions 2.10
+and 2.11 the default value is `cuda11-gdrcopy2-nccl2.11`.  This
+value is ignored for HPC-X version version 2.9 and earlier.
+
+- __cuda__: The CUDA label assigned by Mellanox to the tarball.  This
+parameter is only recognized for version 2.24 and later.  The
+default value is `cuda13.`
 
 - __environment__: Boolean flag to specify whether the environment
 should be modified to include HPC-X. This option is only
@@ -1574,27 +1583,29 @@ library directories. This value is ignored if `hpcxinit` is
 `True`. The default value is False.
 
 - __mlnx_ofed__: The version of Mellanox OFED that should be matched.
-This value is ignored if Inbox OFED is selected.  The default
-value is `5` for HPC-X version 2.10 and later, and `5.2-2.2.0.0`
-for earlier HPC-X versions.
+This value is ignored if Inbox OFED is selected, or for HPC-X 2.21
+and later.  The default value is `5` for HPC-X version 2.10 and
+later, and `5.2-2.2.0.0` for earlier HPC-X versions.
 
 - __multi_thread__: Boolean flag to specify whether the multi-threaded
 version of Mellanox HPC-X should be used.  The default is `False`.
 
 - __ofedlabel__: The Mellanox OFED label assigned by Mellanox to the
-tarball.  For version 2.16 and later, the default value is
+tarball.  For version 2.21 and later, the default value is
+`gcc-doca_ofed`.  For version 2.16 through 2.18, the default value is
 `gcc-mlnx_ofed`.  For earlier versions, the default value is
 `gcc-MLNX_OFED_LINUX-5`.  This value is ignored if `inbox` is `True`.
 
 - __oslabel__: The Linux distribution label assigned by Mellanox to the
 tarball.  For Ubuntu, the default value is `ubuntu16.04` for
 Ubuntu 16.04, `ubuntu18.04` for Ubuntu 18.04, `ubuntu20.04` for
-Ubuntu 20.04, and `ubuntu22.04` for Ubuntu 22.04.  For HPC-X
-version 2.10 and later and RHEL-based Linux distributions, the
-default value is `redhat7` for version 7 and `redhat8` for version
-8.  For HPC-X version 2.9 and earlier and RHEL-based Linux
-distributions, the default value is `redhat7.6` for version 7 and
-`redhat8.0` for version 8.
+Ubuntu 20.04, `ubuntu22.04` for Ubuntu 22.04, and `ubuntu24.04`
+for Ubuntu 24.04.  For HPC-X version 2.10 and later and RHEL-based
+Linux distributions, the default value is `redhat7` for version 7,
+`redhat8` for version 8, and `redhat9` for version 9.  For HPC-X
+version 2.9 and earlier and RHEL-based Linux distributions, the
+default value is `redhat7.6` for version 7 and `redhat8.0` for
+version 8.
 
 - __ospackages__: List of OS packages to install prior to installing
 Mellanox HPC-X.  For Ubuntu, the default values are `bzip2`,
@@ -1606,7 +1617,7 @@ distributions the default values are `bzip2`, `numactl-libs`,
 `/usr/local/hpcx`.
 
 - __version__: The version of Mellanox HPC-X to install.  The default
-value is `2.19`.
+value is `2.24.1`.
 
 __Examples__
 
@@ -3258,7 +3269,7 @@ the default GNU toolchain.
 
 - __version__: The version of the HPC SDK to use.  Note when `package`
 is set the version is determined automatically from the package
-file name.  The default value is `25.1`.
+file name.  The default value is `25.3`.
 
 __Examples__
 
